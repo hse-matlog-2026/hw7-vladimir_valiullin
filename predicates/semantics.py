@@ -147,6 +147,12 @@ class Model(Generic[T]):
             assert function in self.function_interpretations and \
                    self.function_arities[function] == arity
         # Task 7.7
+        if is_constant(term.root):
+            return self.constant_interpretations[term.root]
+        if is_variable(term.root):
+            return assignment[term.root]
+        vals = tuple(self.evaluate_term(arg, assignment) for arg in term.arguments)
+        return self.function_interpretations[term.root][vals]
 
     def evaluate_formula(self, formula: Formula,
                          assignment: Mapping[str, T] = frozendict()) -> bool:
@@ -176,6 +182,41 @@ class Model(Generic[T]):
             assert relation in self.relation_interpretations and \
                    self.relation_arities[relation] in {-1, arity}
         # Task 7.8
+        if is_equality(formula.root):
+            v1 = self.evaluate_term(formula.arguments[0], assignment)
+            v2 = self.evaluate_term(formula.arguments[1], assignment)
+            return v1 == v2
+        if is_relation(formula.root):
+            vals = tuple(self.evaluate_term(arg, assignment) for arg in formula.arguments)
+            return vals in self.relation_interpretations[formula.root]
+        if is_unary(formula.root):
+            return not self.evaluate_formula(formula.first, assignment)
+        if is_binary(formula.root):
+            if formula.root == '&':
+                return self.evaluate_formula(formula.first, assignment) and \
+                    self.evaluate_formula(formula.second, assignment)
+            if formula.root == '|':
+                return self.evaluate_formula(formula.first, assignment) or \
+                    self.evaluate_formula(formula.second, assignment)
+            if formula.root == '->':
+                return (not self.evaluate_formula(formula.first, assignment)) or \
+                    self.evaluate_formula(formula.second, assignment)
+        if is_quantifier(formula.root):
+            if formula.root == 'A': # ∀
+                for val in self.universe:
+                    nn = dict(assignment)
+                    nn[formula.variable] = val
+                    if not self.evaluate_formula(formula.statement, nn):
+                        return False
+                return True
+            if formula.root == 'E': # ∃
+                for val in self.universe:
+                    nn = dict(assignment)
+                    nn[formula.variable] = val
+                    if self.evaluate_formula(formula.statement, nn):
+                        return True
+                return False
+        return False
 
     def is_model_of(self, formulas: AbstractSet[Formula]) -> bool:
         """Checks if the current model is a model of the given formulas.
@@ -200,3 +241,11 @@ class Model(Generic[T]):
                 assert relation in self.relation_interpretations and \
                        self.relation_arities[relation] in {-1, arity}
         # Task 7.9
+        for formula in formulas:
+            free_vars = list(formula.free_variables())
+            import itertools
+            for vals in itertools.product(self.universe, repeat=len(free_vars)):
+                assignment = dict(zip(free_vars, vals))
+                if not self.evaluate_formula(formula, assignment):
+                    return False
+        return True
